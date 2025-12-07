@@ -1,4 +1,4 @@
-function toggleSidebar() {
+ function toggleSidebar() {
   const sidebar = document.getElementById("sidebar");
   const overlay = document.getElementById("overlay");
   const menuButton = document.querySelector(".menu-button");
@@ -115,49 +115,114 @@ function filterStudents() {
   });
 }
 
-function addStudent() {
-  let name = prompt("Enter Student Name:");
-  if (!name || name.trim() == "") return alert("Name required!");
+async function addStudent() {
+  const { value: name } = await Swal.fire({
+    title: "Enter Student Name",
+    input: "text",
+    inputPlaceholder: "e.g., John Doe",
+    showCancelButton: true,
+    confirmButtonText: "Next",
+    inputValidator: (value) => {
+      if (!value || value.trim() === "") {
+        return "Name is required!";
+      }
+    },
+  });
+
+  if (!name) return;
+
   let roll;
-  while (true) {
-    roll = prompt(`Enter Roll Number for ${name}:`);
-    if (!roll || roll.trim() == "") return alert("Roll required!");
-    if (students.some((s) => s.roll === roll.trim()))
-      alert("Roll exists, enter unique!");
-    else break;
+  let uniqueRoll = false;
+
+  while (!uniqueRoll) {
+    const { value: rollInput, isConfirmed } = await Swal.fire({
+      title: `Enter Roll Number for ${name.trim()}`,
+      input: "text",
+      inputPlaceholder: "e.g., 105",
+      showCancelButton: true,
+      confirmButtonText: "Add Student",
+      inputValidator: (value) => {
+        if (!value || value.trim() === "") {
+          return "Roll number is required!";
+        }
+        if (students.some((s) => s.roll === value.trim())) {
+          return "This Roll Number already exists. Please enter a unique one.";
+        }
+      },
+    });
+
+    if (!isConfirmed) return;
+
+    roll = rollInput.trim();
+    if (roll) {
+      uniqueRoll = true;
+    }
   }
+
   students.push({ name: name.trim(), roll: roll.trim() });
   localStorage.setItem("studentsDB", JSON.stringify(students));
+
+  Swal.fire({
+    icon: "success",
+    title: "Student Added!",
+    text: `${name.trim()} (Roll: ${roll.trim()}) has been added successfully.`,
+    timer: 2000,
+    showConfirmButton: false,
+  });
+
   loadAttendanceUI();
   checkStatus();
 }
 
 function deleteStudent(roll) {
-  if (
-    !confirm(
-      "Are you sure you want to delete this student and all their attendance records?"
-    )
-  )
-    return;
-  students = students.filter((s) => s.roll !== roll);
-  localStorage.setItem("studentsDB", JSON.stringify(students));
-  let attendanceRecords = JSON.parse(
-    localStorage.getItem("attendanceDB") || "{}"
-  );
-  for (let day in attendanceRecords) {
-    attendanceRecords[day] = attendanceRecords[day].filter(
-      (r) => r.roll !== roll
-    );
-  }
-  localStorage.setItem("attendanceDB", JSON.stringify(attendanceRecords));
-  loadAttendanceUI();
-  checkStatus();
+  Swal.fire({
+    title: "Are you sure?",
+    text: "You are about to delete this student and ALL their attendance records!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#dc3545",
+    cancelButtonColor: "#6c757d",
+    confirmButtonText: "Yes, delete it!",
+  }).then((result) => {
+    if (result.isConfirmed) {
+      students = students.filter((s) => s.roll !== roll);
+      localStorage.setItem("studentsDB", JSON.stringify(students));
+      let attendanceRecords = JSON.parse(
+        localStorage.getItem("attendanceDB") || "{}"
+      );
+      for (let day in attendanceRecords) {
+        attendanceRecords[day] = attendanceRecords[day].filter(
+          (r) => r.roll !== roll
+        );
+      }
+      localStorage.setItem("attendanceDB", JSON.stringify(attendanceRecords));
+      loadAttendanceUI();
+      checkStatus();
+      Swal.fire(
+        "Deleted!",
+        "The student and their records have been deleted.",
+        "success"
+      );
+    }
+  });
 }
 
 function saveAttendance() {
   let day = document.getElementById("daySelect").value;
-  if (!day) return alert("Select a day before saving!");
-  if (students.length == 0) return alert("No students to save attendance for!");
+  if (!day) {
+    return Swal.fire({
+      icon: "warning",
+      title: "Selection Required",
+      text: "Select a day before saving!",
+    });
+  }
+  if (students.length == 0) {
+    return Swal.fire({
+      icon: "info",
+      title: "No Students",
+      text: "No students to save attendance for!",
+    });
+  }
 
   let notMarkedCount = 0;
   let todayData = students.map((s) => {
@@ -170,21 +235,36 @@ function saveAttendance() {
   });
 
   if (notMarkedCount > 0) {
-    if (
-      !confirm(
-        `Warning: ${notMarkedCount} student(s) status is not marked. Save anyway?`
-      )
-    ) {
-      return;
-    }
+    Swal.fire({
+      title: "Unmarked Students",
+      text: `Warning: ${notMarkedCount} student(s) status is not marked. Save anyway?`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Yes, save it!",
+      cancelButtonText: "Cancel",
+    }).then((result) => {
+      if (result.isConfirmed) {
+        processSave(day, todayData);
+      }
+    });
+  } else {
+    processSave(day, todayData);
   }
+}
 
+function processSave(day, todayData) {
   let attendanceRecords = JSON.parse(
     localStorage.getItem("attendanceDB") || "{}"
   );
   attendanceRecords[day] = todayData;
   localStorage.setItem("attendanceDB", JSON.stringify(attendanceRecords));
-  alert(`Attendance for Day ${day} successfully saved!`);
+  Swal.fire({
+    icon: "success",
+    title: "Attendance Saved!",
+    text: `Attendance for Day ${day} successfully saved!`,
+    timer: 2000,
+    showConfirmButton: false,
+  });
   checkStatus();
 }
 
@@ -204,13 +284,13 @@ function checkStatus() {
   let notMarked = total - present - absent;
 
   document.getElementById("statusOutput").innerHTML = `
-          <h6 class="text-primary mb-3"><i class="bi bi-calendar-day me-2"></i> Attendance Summary for Day ${day}</h6>
-          <p class="mb-1"><strong>Total Students:</strong> ${total}</p>
-          <hr>
-          <p class="text-success mb-1"><strong>Present:</strong> ${present} / ${total} <i class="bi bi-check-circle-fill"></i></p>
-          <p class="text-danger mb-1"><strong>Absent:</strong> ${absent} / ${total} <i class="bi bi-x-circle-fill"></i></p>
-          <p class="text-secondary mb-0"><strong>Not Marked:</strong> ${notMarked} <i class="bi bi-question-circle-fill"></i></p>
-      `;
+        <h6 class="text-primary mb-3"><i class="bi bi-calendar-day me-2"></i> Attendance Summary for Day ${day}</h6>
+        <p class="mb-1"><strong>Total Students:</strong> ${total}</p>
+        <hr>
+        <p class="text-success mb-1"><strong>Present:</strong> ${present} / ${total} <i class="bi bi-check-circle-fill"></i></p>
+        <p class="text-danger mb-1"><strong>Absent:</strong> ${absent} / ${total} <i class="bi bi-x-circle-fill"></i></p>
+        <p class="text-secondary mb-0"><strong>Not Marked:</strong> ${notMarked} <i class="bi bi-question-circle-fill"></i></p>
+    `;
 }
 
 function showDashboard(e) {
@@ -230,10 +310,15 @@ function showStatus(e) {
 }
 
 function logout() {
-  alert("Logging out...");
-  setTimeout(() => {
-    window.location.href = "index.html";
-  }, 500);
+  Swal.fire({
+    title: "Logging out...",
+    icon: "info",
+    timer: 1000,
+    showConfirmButton: false,
+    didClose: () => {
+      window.location.href = "index.html";
+    },
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -245,3 +330,4 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("statusDaySelect")
     .addEventListener("change", checkStatus);
 });
+
